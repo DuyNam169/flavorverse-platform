@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/flavorverse
+    username: yourusername
+    password: yourpassword
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: your-google-client-id.apps.googleusercontent.com
+            client-secret: your-google-client-secret

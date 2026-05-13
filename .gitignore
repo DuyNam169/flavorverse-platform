@@ -25,6 +25,7 @@ build/
 target/
 *.log
 *.class
+application-dev.yml
 
 # ======================
 # PYTHON (AI service)
