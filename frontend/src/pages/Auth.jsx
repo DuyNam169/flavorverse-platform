@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/index.js'
-import { MOCK_USER } from '../data/mockData.js'
+import { useGoogleLogin } from '@react-oauth/google'
+import api from '../api/index.js'
+import toast from 'react-hot-toast'
 
 // ── Google OAuth helper ───────────────────────────────────────
 // Production: replace with real Google OAuth flow
@@ -30,34 +32,32 @@ export default function Auth() {
     if (isLoggedIn) navigate('/', { replace: true })
   }, [isLoggedIn])
 
-  const handleGoogleLogin = async () => {
-    setLoading(true)
-    try {
-      // ── Production flow ──────────────────────────────────
-      // 1. Redirect to Google:
-      //    window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`
-      // 2. Google redirects back → backend exchanges code → returns JWT
-      // 3. Store JWT: localStorage.setItem('jwt_token', token)
-      // 4. Fetch /api/auth/me and set user in store
-      // ────────────────────────────────────────────────────
-      await new Promise(r => setTimeout(r, 1200)) // simulate
-      login(MOCK_USER)
-      navigate('/')
-    } catch (err) {
-      console.error('Login failed', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const googleLogin = useGoogleLogin({
+    flow: 'auth-code',
+    onSuccess: async ({ code }) => {
+      setLoading(true)
+      try {
+        const res = await api.post('/auth/google/callback', { code })
+        const { accessToken, refreshToken, user } = res.data.data
+        localStorage.setItem('jwt_token', accessToken)
+        localStorage.setItem('refresh_token', refreshToken)
+        login(user)
+        navigate('/')
+      } catch (err) {
+        toast.error('Đăng nhập thất bại, thử lại nhé!')
+      } finally {
+        setLoading(false)
+      }
+    },
+    onError: () => toast.error('Google từ chối đăng nhập'),
+  })
 
-  const handleEmailLogin = async (e) => {
+  const handleGoogleLogin = () => googleLogin()
+
+
+  const handleEmailLogin = (e) => {
     e.preventDefault()
-    // Integrate with backend: POST /api/auth/login (if added)
-    setLoading(true)
-    await new Promise(r => setTimeout(r, 900))
-    login(MOCK_USER)
-    navigate('/')
-    setLoading(false)
+    toast.error('Hiện chỉ hỗ trợ đăng nhập qua Google')
   }
 
   return (

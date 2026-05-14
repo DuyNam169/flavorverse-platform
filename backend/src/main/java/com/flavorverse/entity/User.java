@@ -7,6 +7,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "users")
@@ -50,8 +52,8 @@ public class User {
     @Builder.Default
     private Integer calorieGoal = 2000;
 
-    @Column(columnDefinition = "TEXT[]")
-    @Convert(converter = StringArrayConverter.class)
+    @Column(columnDefinition = "text[]")
+    @JdbcTypeCode(SqlTypes.ARRAY)
     private String[] allergies;
 
     @Column(name = "diet_type")
