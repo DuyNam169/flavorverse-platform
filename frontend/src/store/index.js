@@ -2,10 +2,14 @@ import { create } from 'zustand'
 import { MOCK_USER, MOCK_RECIPES, MEAL_PLAN_MOCK, SHOPPING_LIST } from '../data/mockData'
 
 export const useAuthStore = create((set) => ({
-  user: MOCK_USER,
-  isLoggedIn: true,
+  user: null,
+  isLoggedIn: false,
   login: (user) => set({ user, isLoggedIn: true }),
-  logout: () => set({ user: null, isLoggedIn: false }),
+  logout: () => {
+    localStorage.removeItem('jwt_token')
+    localStorage.removeItem('refresh_token')
+    set({ user: null, isLoggedIn: false })
+  },
 }))
 
 export const useRecipeStore = create((set, get) => ({

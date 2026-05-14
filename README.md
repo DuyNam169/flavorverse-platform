@@ -35,6 +35,7 @@ cd frontend && cp .env.example .env && npm install && npm install @react-oauth/g
 ```
 
 ### Backend (Spring Boot - cần Java 21)
+docker stop flavorverse-backend
 ```bash
 cd backend && cp application-dev-example.yml application-dev.yml && mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 # → http://localhost:8080
