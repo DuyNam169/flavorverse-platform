@@ -4,6 +4,7 @@ import { ArrowLeft, Bookmark, BookmarkCheck, GitFork, Share2, Clock, Users, Chef
 import { Button, Badge, Avatar, StarRating, DifficultyBadge } from '../components/common/index.jsx'
 import { useAuthStore } from '../store/index.js'
 import { recipeApi } from '../api/index.js'
+import api from '../api/index.js'
 
 const TABS = ['Nguyên liệu', 'Cách làm', 'Dinh dưỡng', 'Đánh giá']
 
@@ -43,7 +44,7 @@ export default function RecipeDetail() {
       setLoading(true)
       setError(null)
       const res = await recipeApi.getById(id)
-      setRecipe(res.data)
+      setRecipe(res.data.data)
     } catch (e) {
       setError('Không tìm thấy công thức hoặc có lỗi xảy ra.')
     } finally {
@@ -56,7 +57,8 @@ export default function RecipeDetail() {
     try {
       const res = await recipeApi.getReviews(id)
       // API trả về list hoặc PageResponse — handle cả hai
-      setReviews(Array.isArray(res.data) ? res.data : res.data.content ?? [])
+      const payload = res.data.data
+      setReviews(Array.isArray(payload) ? payload : payload?.content ?? [])
     } catch {
       setReviews([])
     }
@@ -66,12 +68,10 @@ export default function RecipeDetail() {
   const fetchSavedIds = useCallback(async () => {
     if (!isLoggedIn || !user?.id) return
     try {
-      const res = await recipeApi.getSavedIds?.() // nếu có endpoint riêng
-      // Nếu không có endpoint getSavedIds, dùng userApi.getSaved
-      if (res?.data) setSavedIds(res.data.map(String))
-    } catch {
-      // Không critical — bỏ qua
-    }
+      const res = await api.get('/users/me/saved-ids')
+      const ids = res.data.data || []
+      setSavedIds(ids.map(String))
+    } catch {}
   }, [isLoggedIn, user?.id])
 
   useEffect(() => {
