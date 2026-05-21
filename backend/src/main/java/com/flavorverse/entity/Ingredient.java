@@ -35,4 +35,8 @@ public class Ingredient {
     @Column(name = "is_optional")
     @Builder.Default
     private Boolean isOptional = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "master_id")
+    private IngredientMaster master;
 }

@@ -7,8 +7,9 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -52,10 +53,6 @@ public class User {
     @Builder.Default
     private Integer calorieGoal = 2000;
 
-    @Column(columnDefinition = "text[]")
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    private String[] allergies;
-
     @Column(name = "diet_type")
     @Builder.Default
     private String dietType = "normal";
@@ -63,4 +60,20 @@ public class User {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "password_hash")
+    private String passwordHash;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "user_allergy_tags",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    @Builder.Default
+    private List<Tag> allergyTags = new ArrayList<>();
+
 }

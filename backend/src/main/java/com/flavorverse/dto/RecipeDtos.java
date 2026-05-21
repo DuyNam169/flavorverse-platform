@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import com.flavorverse.dto.UserDtos.TagDto;
+
 public class RecipeDtos {
 
     @Data public static class IngredientRequest {
@@ -17,13 +19,17 @@ public class RecipeDtos {
         private String note;
         private Integer orderIndex;
         private Boolean optional;
+        private UUID masterId;
     }
 
     @Data public static class StepRequest {
         @NotNull private Integer stepNumber;
         private String title;
         @NotBlank private String description;
-        private Integer timerSeconds;
+        private Integer timer;
+        private String imageUrl;
+        private String videoUrl;
+        private String[] mediaUrls;
     }
 
     @Data public static class CreateRecipeRequest {
@@ -35,7 +41,11 @@ public class RecipeDtos {
         @Min(0) private Integer cookTimeMinutes;
         @Min(1) private Integer servings;
         private String difficulty;
-        private Boolean isPublic;
+        private String visibility; // "public" | "followers_only" | "private"
+        private String videoUrl;
+        private String[] mediaUrls;
+        private Integer sodiumMg;
+        private Integer cholesterolMg;
         // Nutrition
         private Integer caloriesPerServing;
         private BigDecimal proteinG;
@@ -46,7 +56,7 @@ public class RecipeDtos {
         // Lists
         private List<IngredientRequest> ingredients;
         private List<StepRequest> steps;
-        private String[] tags;
+        private List<UUID> tagIds;
         private String[] season;
     }
 
@@ -69,15 +79,17 @@ public class RecipeDtos {
         private Integer saveCount;
         private BigDecimal avgRating;
         private Integer ratingCount;
-        private String[] tags;
+        private List<TagDto> tags;
         private String[] season;
-        private Boolean isPublic;
+        private String visibility;
         private UUID forkedFromId;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
     }
 
-    @Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor public static class RecipeDetail extends RecipeSummary {
+    @EqualsAndHashCode(callSuper = false)
+    @Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor 
+    public static class RecipeDetail extends RecipeSummary {
         private List<IngredientResponse> ingredients;
         private List<StepResponse> steps;
     }
@@ -98,6 +110,28 @@ public class RecipeDtos {
         private String title;
         private String description;
         private String imageUrl;
-        private Integer timerSeconds;
+        private Integer timer;
+    }
+
+    @Data public static class IngredientMasterRequest {
+        @NotBlank private String name;
+        private String imageUrl;
+        private List<UUID> tagIds;
+    }
+
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class IngredientMasterResponse {
+        private UUID id;
+        private String name;
+        private String imageUrl;
+        private List<TagDto> tags;
+        private Integer useCount;
+    }
+
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class TagDto {
+        private UUID id;
+        private String name;
+        private String slug;
     }
 }

@@ -56,9 +56,20 @@ public class Recipe {
     @Builder.Default
     private String difficulty = "medium";
 
-    @Column(name = "is_public")
+    @Column(length = 20)
     @Builder.Default
-    private Boolean isPublic = true;
+    private String visibility = "public"; // "public" | "followers_only" | "private" | "custom"
+
+    @Convert(converter = StringArrayConverter.class)
+    @Column(name = "media_urls")
+    private String[] mediaUrls;
+
+    // Thêm vào nutrition section:
+    @Column(name = "sodium_mg")
+    private Integer sodiumMg;
+
+    @Column(name = "cholesterol_mg")
+    private Integer cholesterolMg;
 
     @Builder.Default
     private String status = "published";
@@ -99,8 +110,13 @@ public class Recipe {
     @Builder.Default
     private Integer ratingCount = 0;
 
-    @Convert(converter = StringArrayConverter.class)
-    private String[] tags;
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "recipe_tags",
+        joinColumns = @JoinColumn(name = "recipe_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    private List<Tag> tags;
 
     @Convert(converter = StringArrayConverter.class)
     private String[] season;

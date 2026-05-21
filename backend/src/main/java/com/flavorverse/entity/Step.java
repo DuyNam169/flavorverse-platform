@@ -32,6 +32,13 @@ public class Step {
     @Column(name = "image_url")
     private String imageUrl;
 
-    @Column(name = "timer_seconds")
-    private Integer timerSeconds;
+    @Column(name = "video_url")
+    private String videoUrl;
+
+    @Convert(converter = StringArrayConverter.class)
+    @Column(name = "media_urls")
+    private String[] mediaUrls;
+
+    @Column(name = "timer")
+    private Integer timer;
 }
