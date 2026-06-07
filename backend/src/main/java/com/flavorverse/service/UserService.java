@@ -1,17 +1,19 @@
 package com.flavorverse.service;
 
+import com.flavorverse.dto.IngredientDtos;
 import com.flavorverse.dto.UserDtos;
+import com.flavorverse.entity.Ingredient;
 import com.flavorverse.entity.User;
+import com.flavorverse.entity.UserAllergy;
 import com.flavorverse.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import com.flavorverse.entity.Tag;
-import java.util.List;
-import java.util.stream.Collectors;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -20,7 +22,8 @@ public class UserService {
     private final UserRepository userRepo;
     private final RecipeRepository recipeRepo;
     private final PasswordEncoder passwordEncoder;
-    private final TagService tagService;
+    private final UserAllergyRepository allergyRepo;
+    private final IngredientRepository ingredientRepo;
 
     public User getById(UUID id) {
         return userRepo.findById(id)
@@ -42,16 +45,11 @@ public class UserService {
             String base = email.split("@")[0].replaceAll("[^a-zA-Z0-9_]", "");
             String username = base;
             int suffix = 1;
-            while (userRepo.existsByUsername(username)) {
-                username = base + suffix++;
-            }
+            while (userRepo.existsByUsername(username)) username = base + suffix++;
             return userRepo.save(User.builder()
-                    .googleId(googleId)
-                    .email(email)
-                    .username(username)
-                    .displayName(displayName)
-                    .avatarUrl(avatarUrl)
-                    .build());
+                    .googleId(googleId).email(email)
+                    .username(username).displayName(displayName)
+                    .avatarUrl(avatarUrl).build());
         });
     }
 
@@ -69,12 +67,6 @@ public class UserService {
         if (req.getCountryCode() != null) user.setCountryCode(req.getCountryCode());
         if (req.getCalorieGoal() != null) user.setCalorieGoal(req.getCalorieGoal());
         if (req.getDietType() != null) user.setDietType(req.getDietType());
-        if (req.getAllergyTagNames() != null) {
-            List<Tag> tags = req.getAllergyTagNames().stream()
-                    .map(name -> tagService.findOrCreate(name, "allergy"))
-                    .collect(Collectors.toList());
-            user.setAllergyTags(tags);
-        }
         if (req.getDateOfBirth() != null) user.setDateOfBirth(req.getDateOfBirth());
         if (req.getAvatarUrl() != null) user.setAvatarUrl(req.getAvatarUrl());
         return userRepo.save(user);
@@ -82,6 +74,18 @@ public class UserService {
 
     public UserDtos.UserResponse toDto(User user) {
         long recipeCount = recipeRepo.findByAuthorIdOrderByCreatedAtDesc(user.getId()).size();
+        List<IngredientDtos.AllergyResponse> allergies = allergyRepo.findByUserId(user.getId())
+                .stream().map(a -> {
+                    Ingredient ing = a.getIngredient();
+                    return IngredientDtos.AllergyResponse.builder()
+                            .ingredientId(a.getIngredientId())
+                            .ingredientName(ing != null ? ing.getName() : null)
+                            .ingredientImageUrl(ing != null ? ing.getImageUrl() : null)
+                            .severity(a.getSeverity())
+                            .note(a.getNote())
+                            .build();
+                }).collect(Collectors.toList());
+
         return UserDtos.UserResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -94,39 +98,75 @@ public class UserService {
                 .dateOfBirth(user.getDateOfBirth())
                 .calorieGoal(user.getCalorieGoal())
                 .dietType(user.getDietType())
-                .allergyTags(user.getAllergyTags() == null ? List.of() :
-                    user.getAllergyTags().stream()
-                        .map(t -> UserDtos.TagDto.builder()
-                            .id(t.getId()).name(t.getName())
-                            .slug(t.getSlug()).type(t.getType())
-                            .build())
-                        .collect(Collectors.toList()))
+                .allergies(allergies)
                 .followersCount(0L)
                 .followingCount(0L)
                 .recipeCount(recipeCount)
                 .build();
     }
 
+    public UserDtos.UserSummary toSummary(User user) {
+        return UserDtos.UserSummary.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .displayName(user.getDisplayName())
+                .avatarUrl(user.getAvatarUrl())
+                .build();
+    }
+
+    public List<IngredientDtos.AllergyResponse> getAllergies(UUID userId) {
+        return allergyRepo.findByUserId(userId).stream().map(a -> {
+            Ingredient ing = a.getIngredient();
+            return IngredientDtos.AllergyResponse.builder()
+                    .ingredientId(a.getIngredientId())
+                    .ingredientName(ing != null ? ing.getName() : null)
+                    .ingredientImageUrl(ing != null ? ing.getImageUrl() : null)
+                    .severity(a.getSeverity())
+                    .note(a.getNote())
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public IngredientDtos.AllergyResponse addAllergy(UUID userId, IngredientDtos.AddAllergyRequest req) {
+        if (allergyRepo.existsByUserIdAndIngredientId(userId, req.getIngredientId()))
+            throw new RuntimeException("Đã có dị ứng này rồi");
+        Ingredient ing = ingredientRepo.findById(req.getIngredientId())
+                .orElseThrow(() -> new RuntimeException("Ingredient not found"));
+        allergyRepo.save(UserAllergy.builder()
+                .userId(userId)
+                .ingredientId(req.getIngredientId())
+                .severity(req.getSeverity())
+                .note(req.getNote())
+                .build());
+        return IngredientDtos.AllergyResponse.builder()
+                .ingredientId(ing.getId())
+                .ingredientName(ing.getName())
+                .ingredientImageUrl(ing.getImageUrl())
+                .severity(req.getSeverity())
+                .note(req.getNote())
+                .build();
+    }
+
+    @Transactional
+    public void removeAllergy(UUID userId, UUID ingredientId) {
+        allergyRepo.deleteByUserIdAndIngredientId(userId, ingredientId);
+    }
+
     @Transactional
     public User register(String email, String password, String username) {
-        if (userRepo.existsByEmail(email))
-            throw new RuntimeException("Email đã được sử dụng");
-        if (userRepo.existsByUsername(username))
-            throw new RuntimeException("Username đã được sử dụng");
-
+        if (userRepo.existsByEmail(email)) throw new RuntimeException("Email đã được sử dụng");
+        if (userRepo.existsByUsername(username)) throw new RuntimeException("Username đã được sử dụng");
         return userRepo.save(User.builder()
-                .email(email)
-                .passwordHash(passwordEncoder.encode(password))
-                .username(username)
-                .displayName(username)
-                .build());
+                .email(email).passwordHash(passwordEncoder.encode(password))
+                .username(username).displayName(username).build());
     }
 
     public User loginWithEmail(String email, String password) {
         User user = userRepo.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Email không tồn tại"));
         if (user.getPasswordHash() == null)
-            throw new RuntimeException("Tài khoản này dùng đăng nhập Google, không có mật khẩu");
+            throw new RuntimeException("Tài khoản này dùng đăng nhập Google");
         if (!passwordEncoder.matches(password, user.getPasswordHash()))
             throw new RuntimeException("Mật khẩu không đúng");
         return user;

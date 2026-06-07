@@ -41,7 +41,7 @@ export default function Profile() {
     Promise.all([
       api.get(`/users/${resolvedId}/profile`),
       api.get(`/users/${resolvedId}/recipes`),
-      api.get(`/users/${resolvedId}/saved`),
+      userApi.getSaved(resolvedId),
     ])
       .then(([profileRes, recipesRes, savedRes]) => {
         setProfileUser(profileRes.data.data)
@@ -63,6 +63,11 @@ export default function Profile() {
     } catch {
       toast.error('Thao tác thất bại')
     }
+  }
+
+  const handleRecipeDeleted = (deletedId) => {
+    setRecipes(prev => prev.filter(r => r.id !== deletedId))
+    setSavedRecipes(prev => prev.filter(r => r.id !== deletedId))
   }
 
   const forkedRecipes = recipes.filter(r => r.forkedFromId)
@@ -195,7 +200,14 @@ export default function Profile() {
         {/* Content */}
         {tabContent.length > 0 ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
-            {tabContent.map(r => <RecipeCard key={r.id} recipe={r} />)}
+            {tabContent.map(r => (
+              <RecipeCard
+                key={r.id}
+                recipe={r}
+                isOwner={isMe && tab === 'Công thức'}
+                onDeleted={handleRecipeDeleted}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-16">

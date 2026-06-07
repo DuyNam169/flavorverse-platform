@@ -5,11 +5,9 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -29,10 +27,10 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true, nullable = false, length = 50)
     private String username;
 
-    @Column(name = "display_name")
+    @Column(name = "display_name", length = 100)
     private String displayName;
 
     @Column(name = "avatar_url")
@@ -53,13 +51,9 @@ public class User {
     @Builder.Default
     private Integer calorieGoal = 2000;
 
-    @Column(name = "diet_type")
+    @Column(name = "diet_type", length = 50)
     @Builder.Default
     private String dietType = "normal";
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
 
     @Column(name = "password_hash")
     private String passwordHash;
@@ -67,13 +61,9 @@ public class User {
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "user_allergy_tags",
-        joinColumns = @JoinColumn(name = "user_id"),
-        inverseJoinColumns = @JoinColumn(name = "tag_id")
-    )
-    @Builder.Default
-    private List<Tag> allergyTags = new ArrayList<>();
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
 
+    // Allergies được load qua UserAllergyRepository khi cần (tránh eager load nặng)
 }

@@ -1,18 +1,28 @@
 package com.flavorverse.controller;
 
-import com.flavorverse.dto.*;
-import com.flavorverse.service.*;
+import com.flavorverse.dto.CommonDtos;
+import com.flavorverse.dto.IngredientDtos;
+import com.flavorverse.dto.PlannerDtos;
+import com.flavorverse.dto.UserDtos;
+import com.flavorverse.service.CloudinaryService;
+import com.flavorverse.service.MealPlannerService;
+import com.flavorverse.service.RecipeService;
+import com.flavorverse.service.TagService;
+import com.flavorverse.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.security.Principal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 
-// ── UserController ────────────────────────────────────────────
+// ── UserController ─────────────────────────────────────────────
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
@@ -23,7 +33,8 @@ class UserController {
 
     @GetMapping("/{id}/profile")
     public ResponseEntity<?> getProfile(@PathVariable UUID id) {
-        return ResponseEntity.ok(CommonDtos.ApiResponse.ok(userService.toDto(userService.getById(id))));
+        return ResponseEntity.ok(CommonDtos.ApiResponse.ok(
+                userService.toDto(userService.getById(id))));
     }
 
     @PutMapping("/me")
@@ -46,13 +57,51 @@ class UserController {
     }
 
     @GetMapping("/{id}/saved")
-    public ResponseEntity<?> getSaved(@PathVariable UUID id, Principal principal) {
-        // For now return saved IDs — frontend can resolve
-        return ResponseEntity.ok(CommonDtos.ApiResponse.ok(recipeService.getSavedIds(id)));
+    public ResponseEntity<?> getSaved(@PathVariable UUID id) {
+        return ResponseEntity.ok(CommonDtos.ApiResponse.ok(
+                recipeService.getSavedRecipes(id)));
     }
 }
 
-// ── PlannerController ─────────────────────────────────────────
+// ── AllergyController (dị ứng với ingredient) ─────────────────
+@RestController
+@RequestMapping("/api/users/me/allergies")
+@RequiredArgsConstructor
+class AllergyController {
+
+    private final UserService userService;
+
+    @GetMapping
+    public ResponseEntity<?> list(Principal principal) {
+        UUID userId = UUID.fromString(principal.getName());
+        return ResponseEntity.ok(CommonDtos.ApiResponse.ok(userService.getAllergies(userId)));
+    }
+
+    @PostMapping
+    public ResponseEntity<?> add(@Valid @RequestBody IngredientDtos.AddAllergyRequest req,
+                                  Principal principal) {
+        try {
+            UUID userId = UUID.fromString(principal.getName());
+            return ResponseEntity.ok(CommonDtos.ApiResponse.ok(
+                    "Đã thêm dị ứng", userService.addAllergy(userId, req)));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(CommonDtos.ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{ingredientId}")
+    public ResponseEntity<?> remove(@PathVariable UUID ingredientId, Principal principal) {
+        try {
+            UUID userId = UUID.fromString(principal.getName());
+            userService.removeAllergy(userId, ingredientId);
+            return ResponseEntity.ok(CommonDtos.ApiResponse.ok("Đã xóa dị ứng", null));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(CommonDtos.ApiResponse.error(e.getMessage()));
+        }
+    }
+}
+
+// ── PlannerController ──────────────────────────────────────────
 @RestController
 @RequestMapping("/api/planner")
 @RequiredArgsConstructor
@@ -70,13 +119,13 @@ class PlannerController {
     }
 
     @PostMapping("/meals")
-    public ResponseEntity<?> addMeal(@Valid @RequestBody PlannerDtos.AddMealRequest req,
-                                      @RequestParam(required = false)
-                                      @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStart,
-                                      Principal principal) {
+    public ResponseEntity<?> addMeal(
+            @Valid @RequestBody PlannerDtos.AddMealRequest req,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStart,
+            Principal principal) {
         UUID userId = UUID.fromString(principal.getName());
-        LocalDate week = weekStart != null ? weekStart : LocalDate.now().with(
-                java.time.DayOfWeek.MONDAY);
+        LocalDate week = weekStart != null ? weekStart :
+                LocalDate.now().with(DayOfWeek.MONDAY);
         return ResponseEntity.ok(CommonDtos.ApiResponse.ok(
                 plannerService.addMeal(userId, req, week)));
     }
@@ -95,7 +144,7 @@ class PlannerController {
     }
 }
 
-// ── UploadController ──────────────────────────────────────────
+// ── UploadController ───────────────────────────────────────────
 @RestController
 @RequestMapping("/api/upload")
 @RequiredArgsConstructor
@@ -104,11 +153,11 @@ class UploadController {
     private final CloudinaryService cloudinaryService;
 
     @PostMapping("/avatar")
-    public ResponseEntity<?> avatar(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+    public ResponseEntity<?> avatar(@RequestParam("file") MultipartFile file,
                                      Principal principal) {
         try {
             String url = cloudinaryService.uploadImage(file, "avatars");
-            return ResponseEntity.ok(CommonDtos.ApiResponse.ok(java.util.Map.of("url", url)));
+            return ResponseEntity.ok(CommonDtos.ApiResponse.ok(Map.of("url", url)));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(CommonDtos.ApiResponse.error(e.getMessage()));
         }

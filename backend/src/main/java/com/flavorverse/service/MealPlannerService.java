@@ -29,22 +29,24 @@ public class MealPlannerService {
     }
 
     @Transactional
-    public PlannerDtos.MealSlotResponse addMeal(UUID userId, PlannerDtos.AddMealRequest req, LocalDate weekStart) {
+    public PlannerDtos.MealSlotResponse addMeal(UUID userId, PlannerDtos.AddMealRequest req,
+                                                 LocalDate weekStart) {
         MealPlan plan = planRepo.findByUserIdAndWeekStart(userId, weekStart)
                 .orElseGet(() -> createEmptyPlan(userId, weekStart));
 
         Recipe recipe = recipeRepo.findById(req.getRecipeId())
                 .orElseThrow(() -> new RuntimeException("Recipe not found"));
 
-        // Remove existing slot for same day+meal
         slotRepo.deleteByPlanDayMeal(plan.getId(), req.getDayOfWeek(), req.getMealType());
 
         MealSlot slot = slotRepo.save(MealSlot.builder()
-                .mealPlan(plan).recipe(recipe)
+                .mealPlan(plan)
+                .recipe(recipe)
                 .dayOfWeek(req.getDayOfWeek())
                 .mealType(req.getMealType())
                 .customLabel(req.getCustomLabel())
                 .servings(req.getServings() != null ? req.getServings() : 1)
+                .notes(req.getNotes())
                 .build());
 
         return toSlotResponse(slot);
@@ -67,23 +69,32 @@ public class MealPlannerService {
 
         Map<String, PlannerDtos.ShoppingItem> aggregated = new LinkedHashMap<>();
 
-        for (MealSlot slot : plan.getSlots()) {
+        for (MealSlot slot : slotRepo.findByMealPlanId(planId)) {
             Recipe recipe = slot.getRecipe();
-            if (recipe.getIngredients() == null) continue;
-            for (Ingredient ing : recipe.getIngredients()) {
-                String key = ing.getName().toLowerCase() + "_" + ing.getUnit();
+            if (recipe.getRecipeIngredients() == null) continue;
+
+            for (RecipeIngredient ri : recipe.getRecipeIngredients()) {
+                String displayName = ri.getDisplayName();
+                if (displayName == null) continue;
+
+                String key = displayName.toLowerCase() + "_" + ri.getUnit();
+                String imageUrl = ri.getIngredient() != null ? ri.getIngredient().getImageUrl() : null;
+
                 aggregated.merge(key,
-                    PlannerDtos.ShoppingItem.builder()
-                        .name(ing.getName()).amount(ing.getAmount()).unit(ing.getUnit())
-                        .category(guessCategory(ing.getName()))
-                        .fromRecipes(new ArrayList<>(List.of(recipe.getTitle())))
-                        .build(),
-                    (existing, incoming) -> {
-                        if (existing.getAmount() != null && incoming.getAmount() != null)
-                            existing.setAmount(existing.getAmount().add(incoming.getAmount()));
-                        existing.getFromRecipes().add(recipe.getTitle());
-                        return existing;
-                    });
+                        PlannerDtos.ShoppingItem.builder()
+                                .name(displayName)
+                                .ingredientImageUrl(imageUrl)
+                                .amount(ri.getAmount())
+                                .unit(ri.getUnit())
+                                .category(guessCategory(ri))
+                                .fromRecipes(new ArrayList<>(List.of(recipe.getTitle())))
+                                .build(),
+                        (existing, incoming) -> {
+                            if (existing.getAmount() != null && incoming.getAmount() != null)
+                                existing.setAmount(existing.getAmount().add(incoming.getAmount()));
+                            existing.getFromRecipes().add(recipe.getTitle());
+                            return existing;
+                        });
             }
         }
 
@@ -93,8 +104,10 @@ public class MealPlannerService {
     private MealPlan createEmptyPlan(UUID userId, LocalDate weekStart) {
         User user = userService.getById(userId);
         return planRepo.save(MealPlan.builder()
-                .user(user).weekStart(weekStart)
-                .name("Thực đơn tuần " + weekStart).build());
+                .user(user)
+                .weekStart(weekStart)
+                .name("Thực đơn tuần " + weekStart)
+                .build());
     }
 
     private PlannerDtos.MealPlanResponse toResponse(MealPlan plan) {
@@ -108,7 +121,7 @@ public class MealPlannerService {
         return PlannerDtos.MealPlanResponse.builder()
                 .id(plan.getId())
                 .weekStart(plan.getWeekStart().toString())
-                .slots(slots.stream().map(this::toSlotResponse).toList())
+                .slots(slots.stream().map(this::toSlotResponse).collect(Collectors.toList()))
                 .nutritionSummary(PlannerDtos.NutritionSummary.builder()
                         .totalCalories(totalCalories)
                         .avgDailyCalories(totalCalories / 7.0)
@@ -124,6 +137,7 @@ public class MealPlannerService {
                 .id(slot.getId())
                 .dayOfWeek(slot.getDayOfWeek())
                 .mealType(slot.getMealType())
+                .customLabel(slot.getCustomLabel())
                 .recipe(recipeService.toSummary(slot.getRecipe()))
                 .servings(slot.getServings())
                 .notes(slot.getNotes())
@@ -134,21 +148,42 @@ public class MealPlannerService {
         return slots.stream().map(s -> {
             BigDecimal val = switch (type) {
                 case "protein" -> s.getRecipe().getProteinG();
-                case "carbs" -> s.getRecipe().getCarbsG();
-                case "fat" -> s.getRecipe().getFatG();
-                default -> BigDecimal.ZERO;
+                case "carbs"   -> s.getRecipe().getCarbsG();
+                case "fat"     -> s.getRecipe().getFatG();
+                default        -> BigDecimal.ZERO;
             };
             return val != null ? val.multiply(BigDecimal.valueOf(s.getServings())) : BigDecimal.ZERO;
         }).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private String guessCategory(String name) {
+    /**
+     * Đoán category của shopping item từ tag ingredient (nếu có),
+     * fallback về rule-based theo tên.
+     */
+    private String guessCategory(RecipeIngredient ri) {
+        if (ri.getIngredient() != null && ri.getIngredient().getTags() != null) {
+            return ri.getIngredient().getTags().stream()
+                    .filter(t -> "ingredient_category".equals(t.getType()))
+                    .findFirst()
+                    .map(t -> t.getName())
+                    .orElseGet(() -> guessCategoryByName(ri.getDisplayName()));
+        }
+        return guessCategoryByName(ri.getDisplayName());
+    }
+
+    private String guessCategoryByName(String name) {
+        if (name == null) return "🛒 Khác";
         String n = name.toLowerCase();
-        if (n.matches(".*(thịt|gà|heo|bò|tôm|cá|mực|cua|lợn).*")) return "🥩 Thịt & Hải sản";
-        if (n.matches(".*(rau|cải|giá|hành|gừng|cà|cà chua|tỏi).*")) return "🥬 Rau củ";
-        if (n.matches(".*(gạo|bún|bánh phở|mì|bột|bánh mì).*")) return "🌾 Tinh bột";
-        if (n.matches(".*(mắm|muối|đường|tiêu|ớt|quế|hồi|dầu|tương).*")) return "🧂 Gia vị";
-        if (n.matches(".*(trứng|sữa|phô mai|bơ).*")) return "🥚 Trứng & Sữa";
+        if (n.matches(".*(thịt|gà|heo|bò|tôm|cá|mực|cua|lợn|sườn|xương).*"))
+            return "🥩 Thịt & Hải sản";
+        if (n.matches(".*(rau|cải|giá|hành|gừng|cà|cà chua|tỏi|ớt|nấm|đậu).*"))
+            return "🥬 Rau củ";
+        if (n.matches(".*(gạo|bún|phở|mì|bột|bánh mì|tinh bột|khoai).*"))
+            return "🌾 Tinh bột";
+        if (n.matches(".*(mắm|muối|đường|tiêu|dầu|tương|sốt|giấm|xì dầu).*"))
+            return "🧂 Gia vị";
+        if (n.matches(".*(trứng|sữa|phô mai|bơ|kem|yaourt).*"))
+            return "🥚 Trứng & Sữa";
         return "🛒 Khác";
     }
 }

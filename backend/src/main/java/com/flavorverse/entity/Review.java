@@ -3,7 +3,9 @@ package com.flavorverse.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -35,8 +37,8 @@ public class Review {
     @Column(columnDefinition = "TEXT")
     private String comment;
 
-    @Convert(converter = StringArrayConverter.class)
-    @Column(name = "media_urls")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "media_urls", columnDefinition = "jsonb")
     private String[] mediaUrls;
 
     @CreationTimestamp

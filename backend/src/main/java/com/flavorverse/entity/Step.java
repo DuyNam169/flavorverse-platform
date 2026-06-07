@@ -5,8 +5,12 @@ import lombok.*;
 
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 @Entity
-@Table(name = "steps")
+@Table(name = "steps",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"recipe_id", "step_number"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -24,6 +28,7 @@ public class Step {
     @Column(name = "step_number", nullable = false)
     private Integer stepNumber;
 
+    @Column(length = 200)
     private String title;
 
     @Column(columnDefinition = "TEXT", nullable = false)
@@ -35,10 +40,11 @@ public class Step {
     @Column(name = "video_url")
     private String videoUrl;
 
-    @Convert(converter = StringArrayConverter.class)
-    @Column(name = "media_urls")
-    private String[] mediaUrls;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "media_urls", columnDefinition = "jsonb")
+    @Builder.Default
+    private String[] mediaUrls = new String[0];
 
-    @Column(name = "timer")
+    /** Timer tính bằng giây */
     private Integer timer;
 }

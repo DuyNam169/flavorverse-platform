@@ -8,44 +8,65 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import com.flavorverse.dto.UserDtos.TagDto;
-
 public class RecipeDtos {
 
-    @Data public static class IngredientRequest {
-        @NotBlank private String name;
+    // ── Request ───────────────────────────────────────────────
+
+    @Data
+    public static class RecipeIngredientRequest {
+        /**
+         * ID của ingredient trong bảng ingredients (master).
+         * Nếu null thì dùng customName.
+         */
+        private UUID ingredientId;
+
+        /**
+         * Tên tự nhập khi ingredient chưa có trong master.
+         * Bắt buộc nếu ingredientId == null.
+         */
+        private String customName;
+
         private BigDecimal amount;
         private String unit;
         private String note;
         private Integer orderIndex;
         private Boolean optional;
-        private UUID masterId;
     }
 
-    @Data public static class StepRequest {
-        @NotNull private Integer stepNumber;
+    @Data
+    public static class StepRequest {
+        @NotNull
+        private Integer stepNumber;
         private String title;
-        @NotBlank private String description;
+        @NotBlank
+        private String description;
         private Integer timer;
         private String imageUrl;
         private String videoUrl;
         private String[] mediaUrls;
     }
 
-    @Data public static class CreateRecipeRequest {
-        @NotBlank @Size(max = 200) private String title;
+    @Data
+    public static class CreateRecipeRequest {
+        @NotBlank @Size(max = 200)
+        private String title;
+
         private String description;
         private String thumbnailUrl;
+        private String videoUrl;
+        private String[] mediaUrls;
         private String countryCode;
+
         @Min(0) private Integer prepTimeMinutes;
         @Min(0) private Integer cookTimeMinutes;
         @Min(1) private Integer servings;
+
+        /** easy | medium | hard */
         private String difficulty;
-        private String visibility; // "public" | "followers_only" | "private"
-        private String videoUrl;
-        private String[] mediaUrls;
-        private Integer sodiumMg;
-        private Integer cholesterolMg;
+
+        /** public | followers_only | private */
+        private String visibility;
+
         // Nutrition
         private Integer caloriesPerServing;
         private BigDecimal proteinG;
@@ -53,16 +74,24 @@ public class RecipeDtos {
         private BigDecimal fatG;
         private BigDecimal fiberG;
         private BigDecimal sugarG;
-        // Lists
-        private List<IngredientRequest> ingredients;
-        private List<StepRequest> steps;
-        private List<UUID> tagIds;
+        private Integer sodiumMg;
+        private Integer cholesterolMg;
+
         private String[] season;
+        private List<UUID> tagIds;
+        private List<RecipeIngredientRequest> ingredients;
+        private List<StepRequest> steps;
     }
 
-    @Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor public static class RecipeSummary {
+    // ── Response ──────────────────────────────────────────────
+
+    @Data
+    @SuperBuilder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RecipeSummary {
         private UUID id;
-        private UserDtos.UserResponse author;
+        private UserDtos.UserSummary author;
         private String title;
         private String description;
         private String thumbnailUrl;
@@ -79,7 +108,7 @@ public class RecipeDtos {
         private Integer saveCount;
         private BigDecimal avgRating;
         private Integer ratingCount;
-        private List<TagDto> tags;
+        private List<IngredientDtos.TagDto> tags;
         private String[] season;
         private String visibility;
         private UUID forkedFromId;
@@ -88,50 +117,52 @@ public class RecipeDtos {
     }
 
     @EqualsAndHashCode(callSuper = false)
-    @Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor 
+    @Data
+    @SuperBuilder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class RecipeDetail extends RecipeSummary {
-        private List<IngredientResponse> ingredients;
+        private String videoUrl;
+        private String[] mediaUrls;
+        private BigDecimal fiberG;
+        private BigDecimal sugarG;
+        private Integer sodiumMg;
+        private Integer cholesterolMg;
+        private List<RecipeIngredientResponse> ingredients;
         private List<StepResponse> steps;
     }
 
-    @Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor public static class IngredientResponse {
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RecipeIngredientResponse {
         private UUID id;
+        /** ID của ingredient master (null nếu là custom) */
+        private UUID ingredientId;
+        /** Tên hiển thị (ingredient.name hoặc customName) */
         private String name;
+        private String imageUrl;  // từ ingredient master
         private BigDecimal amount;
         private String unit;
         private String note;
         private Integer orderIndex;
         private Boolean isOptional;
+        private List<IngredientDtos.TagDto> tags;  // tags của ingredient
     }
 
-    @Data @SuperBuilder @NoArgsConstructor @AllArgsConstructor public static class StepResponse {
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StepResponse {
         private UUID id;
         private Integer stepNumber;
         private String title;
         private String description;
         private String imageUrl;
+        private String videoUrl;
+        private String[] mediaUrls;
         private Integer timer;
-    }
-
-    @Data public static class IngredientMasterRequest {
-        @NotBlank private String name;
-        private String imageUrl;
-        private List<UUID> tagIds;
-    }
-
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
-    public static class IngredientMasterResponse {
-        private UUID id;
-        private String name;
-        private String imageUrl;
-        private List<TagDto> tags;
-        private Integer useCount;
-    }
-
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
-    public static class TagDto {
-        private UUID id;
-        private String name;
-        private String slug;
     }
 }

@@ -12,9 +12,12 @@ import java.util.UUID;
 
 @Repository
 public interface MealSlotRepository extends JpaRepository<MealSlot, UUID> {
+
     List<MealSlot> findByMealPlanId(UUID planId);
 
     @Modifying
     @Query("DELETE FROM MealSlot s WHERE s.mealPlan.id = :planId AND s.dayOfWeek = :day AND s.mealType = :mealType")
-    void deleteByPlanDayMeal(@Param("planId") UUID planId, @Param("day") int day, @Param("mealType") String mealType);
+    void deleteByPlanDayMeal(@Param("planId") UUID planId,
+                              @Param("day") int day,
+                              @Param("mealType") String mealType);
 }

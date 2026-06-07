@@ -1,5 +1,6 @@
 package com.flavorverse.dto;
 
+import com.flavorverse.dto.IngredientDtos;
 import lombok.*;
 import jakarta.validation.constraints.*;
 import java.util.UUID;
@@ -8,7 +9,21 @@ import java.util.List;
 
 public class UserDtos {
 
-    @Data @Builder
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UserSummary {
+        private UUID id;
+        private String username;
+        private String displayName;
+        private String avatarUrl;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class TagDto {
         private UUID id;
         private String name;
@@ -16,7 +31,10 @@ public class UserDtos {
         private String type;
     }
 
-    @Data @Builder
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class UserResponse {
         private UUID id;
         private String username;
@@ -29,7 +47,7 @@ public class UserDtos {
         private LocalDate dateOfBirth;
         private Integer calorieGoal;
         private String dietType;
-        private List<TagDto> allergyTags;
+        private List<IngredientDtos.AllergyResponse> allergies;
         private Long followersCount;
         private Long followingCount;
         private Long recipeCount;
@@ -45,7 +63,6 @@ public class UserDtos {
         private LocalDate dateOfBirth;
         @Min(1200) @Max(5000) private Integer calorieGoal;
         private String dietType;
-        private List<String> allergyTagNames;
         private String avatarUrl;
     }
 }
