@@ -1,7 +1,7 @@
 package com.flavorverse.service;
 
-import com.flavorverse.dto.RecipeDtos;
 import com.flavorverse.dto.CommonDtos;
+import com.flavorverse.dto.RecipeDtos;
 import com.flavorverse.entity.*;
 import com.flavorverse.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -22,28 +22,30 @@ import java.util.stream.IntStream;
 public class RecipeService {
 
     private final RecipeRepository recipeRepo;
+    private final RecipeIngredientRepository recipeIngredientRepo;
     private final ReviewRepository reviewRepo;
     private final SavedRecipeRepository savedRepo;
+    private final TagRepository tagRepo;
+    private final IngredientRepository ingredientRepo;
     private final UserService userService;
+    private final IngredientService ingredientService;
+    private final TagService tagService;
 
     // ── Queries ──────────────────────────────────────────────
 
     public CommonDtos.PageResponse<RecipeDtos.RecipeSummary> getFeed(int page, int size) {
         var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        var p = recipeRepo.findByIsPublicTrueOrderByCreatedAtDesc(pageable);
-        return toPage(p.map(this::toSummary));
+        return toPage(recipeRepo.findPublicOrderByCreatedAtDesc(pageable).map(this::toSummary));
     }
 
     public CommonDtos.PageResponse<RecipeDtos.RecipeSummary> search(String q, int page, int size) {
-        var pageable = PageRequest.of(page, size);
-        var p = recipeRepo.searchPublic(q, pageable);
-        return toPage(p.map(this::toSummary));
+        return toPage(recipeRepo.searchPublic(q, PageRequest.of(page, size)).map(this::toSummary));
     }
 
-    public CommonDtos.PageResponse<RecipeDtos.RecipeSummary> discover(String country, String difficulty, int page, int size) {
-        var pageable = PageRequest.of(page, size);
-        var p = recipeRepo.discover(country, difficulty, pageable);
-        return toPage(p.map(this::toSummary));
+    public CommonDtos.PageResponse<RecipeDtos.RecipeSummary> discover(
+            String country, String difficulty, int page, int size) {
+        return toPage(recipeRepo.discover(country, difficulty, PageRequest.of(page, size))
+                .map(this::toSummary));
     }
 
     public List<RecipeDtos.RecipeSummary> getTrending(int limit) {
@@ -52,12 +54,17 @@ public class RecipeService {
     }
 
     public RecipeDtos.RecipeDetail getById(UUID id) {
-        var recipe = recipeRepo.findById(id)
+        Recipe recipe = recipeRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Recipe not found"));
         return toDetail(recipe);
     }
 
-    // ── Create / Update / Delete ──────────────────────────────
+    public List<RecipeDtos.RecipeSummary> getByAuthor(UUID authorId) {
+        return recipeRepo.findByAuthorIdOrderByCreatedAtDesc(authorId)
+                .stream().map(this::toSummary).toList();
+    }
+
+    // ── Create ────────────────────────────────────────────────
 
     @Transactional
     public RecipeDtos.RecipeSummary create(UUID authorId, RecipeDtos.CreateRecipeRequest req) {
@@ -68,56 +75,96 @@ public class RecipeService {
                 .title(req.getTitle())
                 .description(req.getDescription())
                 .thumbnailUrl(req.getThumbnailUrl())
+                .videoUrl(req.getVideoUrl())
+                .mediaUrls(req.getMediaUrls() != null ? req.getMediaUrls() : new String[0])
                 .countryCode(req.getCountryCode())
                 .prepTimeMinutes(req.getPrepTimeMinutes())
                 .cookTimeMinutes(req.getCookTimeMinutes())
                 .servings(req.getServings() != null ? req.getServings() : 4)
                 .difficulty(req.getDifficulty() != null ? req.getDifficulty() : "medium")
-                .isPublic(req.getIsPublic() != null ? req.getIsPublic() : true)
+                .visibility(req.getVisibility() != null ? req.getVisibility() : "public")
                 .caloriesPerServing(req.getCaloriesPerServing())
                 .proteinG(req.getProteinG())
                 .carbsG(req.getCarbsG())
                 .fatG(req.getFatG())
                 .fiberG(req.getFiberG())
                 .sugarG(req.getSugarG())
-                .tags(req.getTags())
+                .sodiumMg(req.getSodiumMg())
+                .cholesterolMg(req.getCholesterolMg())
                 .season(req.getSeason() != null ? req.getSeason() : new String[]{"all"})
                 .build();
 
         Recipe saved = recipeRepo.save(recipe);
 
-        if (req.getIngredients() != null) {
-            List<Ingredient> ingredients = IntStream.range(0, req.getIngredients().size())
-                    .mapToObj(i -> {
-                        var r = req.getIngredients().get(i);
-                        return Ingredient.builder()
-                                .recipe(saved)
-                                .name(r.getName())
-                                .amount(r.getAmount())
-                                .unit(r.getUnit())
-                                .note(r.getNote())
-                                .orderIndex(r.getOrderIndex() != null ? r.getOrderIndex() : i)
-                                .isOptional(r.getOptional() != null && r.getOptional())
-                                .build();
-                    }).collect(Collectors.toList());
-            saved.setIngredients(ingredients);
+        // Tags
+        if (req.getTagIds() != null && !req.getTagIds().isEmpty()) {
+            List<Tag> tags = tagRepo.findAllById(req.getTagIds());
+            saved.setTags(tags);
+            tagService.incrementUseCount(tags);
         }
 
+        // Recipe ingredients
+        if (req.getIngredients() != null) {
+            List<RecipeIngredient> recipeIngredients = IntStream
+                    .range(0, req.getIngredients().size())
+                    .mapToObj(i -> buildRecipeIngredient(saved, req.getIngredients().get(i), i, author))
+                    .collect(Collectors.toList());
+            saved.setRecipeIngredients(recipeIngredients);
+        }
+
+        // Steps
         if (req.getSteps() != null) {
-            List<Step> steps = req.getSteps().stream().map(s ->
-                    Step.builder()
-                            .recipe(saved)
-                            .stepNumber(s.getStepNumber())
-                            .title(s.getTitle())
-                            .description(s.getDescription())
-                            .timerSeconds(s.getTimerSeconds())
-                            .build()
-            ).collect(Collectors.toList());
+            List<Step> steps = req.getSteps().stream().map(s -> Step.builder()
+                    .recipe(saved)
+                    .stepNumber(s.getStepNumber())
+                    .title(s.getTitle())
+                    .description(s.getDescription())
+                    .timer(s.getTimer())
+                    .imageUrl(s.getImageUrl())
+                    .videoUrl(s.getVideoUrl())
+                    .mediaUrls(s.getMediaUrls() != null ? s.getMediaUrls() : new String[0])
+                    .build()).collect(Collectors.toList());
             saved.setSteps(steps);
         }
 
         return toSummary(recipeRepo.save(saved));
     }
+
+    private RecipeIngredient buildRecipeIngredient(Recipe recipe,
+                                                    RecipeDtos.RecipeIngredientRequest req,
+                                                    int index, User author) {
+        RecipeIngredient.RecipeIngredientBuilder builder = RecipeIngredient.builder()
+                .recipe(recipe)
+                .amount(req.getAmount())
+                .unit(req.getUnit())
+                .note(req.getNote())
+                .orderIndex(req.getOrderIndex() != null ? req.getOrderIndex() : index)
+                .isOptional(req.getOptional() != null && req.getOptional());
+
+        if (req.getIngredientId() != null) {
+            // Link với ingredient master đã có
+            ingredientRepo.findById(req.getIngredientId()).ifPresent(ing -> {
+                builder.ingredient(ing);
+                ing.setUseCount(ing.getUseCount() + 1);
+                ingredientRepo.save(ing);
+            });
+        } else if (req.getCustomName() != null && !req.getCustomName().isBlank()) {
+            // Thử tìm theo tên, nếu chưa có thì để customName
+            ingredientRepo.findByNameIgnoreCase(req.getCustomName().trim())
+                    .ifPresentOrElse(
+                            ing -> {
+                                builder.ingredient(ing);
+                                ing.setUseCount(ing.getUseCount() + 1);
+                                ingredientRepo.save(ing);
+                            },
+                            () -> builder.customName(req.getCustomName().trim())
+                    );
+        }
+
+        return builder.build();
+    }
+
+    // ── Fork ─────────────────────────────────────────────────
 
     @Transactional
     public RecipeDtos.RecipeSummary fork(UUID recipeId, UUID userId) {
@@ -136,7 +183,7 @@ public class RecipeService {
                 .cookTimeMinutes(original.getCookTimeMinutes())
                 .servings(original.getServings())
                 .difficulty(original.getDifficulty())
-                .isPublic(true)
+                .visibility(original.getVisibility())
                 .caloriesPerServing(original.getCaloriesPerServing())
                 .proteinG(original.getProteinG())
                 .carbsG(original.getCarbsG())
@@ -167,7 +214,10 @@ public class RecipeService {
     @Transactional
     public void save(UUID recipeId, UUID userId) {
         if (savedRepo.existsByUserIdAndRecipeId(userId, recipeId)) return;
-        savedRepo.save(new SavedRecipe(userId, recipeId, null));
+        SavedRecipe sr = new SavedRecipe();
+        sr.setUserId(userId);
+        sr.setRecipeId(recipeId);
+        savedRepo.save(sr);
         Recipe r = recipeRepo.findById(recipeId).orElseThrow();
         r.setSaveCount(r.getSaveCount() + 1);
         recipeRepo.save(r);
@@ -185,12 +235,21 @@ public class RecipeService {
         return savedRepo.findRecipeIdsByUserId(userId);
     }
 
+    public List<RecipeDtos.RecipeSummary> getSavedRecipes(UUID userId) {
+        List<UUID> ids = savedRepo.findRecipeIdsByUserId(userId);
+        if (ids.isEmpty()) return List.of();
+        return recipeRepo.findAllById(ids)
+                .stream()
+                .map(this::toSummary)
+                .collect(Collectors.toList());
+    }
+
     // ── Reviews ───────────────────────────────────────────────
 
     @Transactional
     public void addReview(UUID recipeId, UUID userId, int rating, String comment) {
         if (reviewRepo.existsByRecipeIdAndUserId(recipeId, userId))
-            throw new RuntimeException("Already reviewed");
+            throw new RuntimeException("Bạn đã đánh giá công thức này rồi");
 
         User user = userService.getById(userId);
         Recipe recipe = recipeRepo.findById(recipeId).orElseThrow();
@@ -198,7 +257,6 @@ public class RecipeService {
         reviewRepo.save(Review.builder()
                 .recipe(recipe).user(user).rating(rating).comment(comment).build());
 
-        // Update stats
         Double avg = reviewRepo.calcAvgRating(recipeId);
         long count = reviewRepo.countByRecipeId(recipeId);
         recipe.setAvgRating(BigDecimal.valueOf(avg != null ? avg : 0));
@@ -206,17 +264,12 @@ public class RecipeService {
         recipeRepo.save(recipe);
     }
 
-    public List<RecipeDtos.RecipeSummary> getByAuthor(UUID authorId) {
-        return recipeRepo.findByAuthorIdOrderByCreatedAtDesc(authorId)
-                .stream().map(this::toSummary).toList();
-    }
-
     // ── Mappers ───────────────────────────────────────────────
 
     public RecipeDtos.RecipeSummary toSummary(Recipe r) {
         return RecipeDtos.RecipeSummary.builder()
                 .id(r.getId())
-                .author(userService.toDto(r.getAuthor()))
+                .author(userService.toSummary(r.getAuthor()))
                 .title(r.getTitle())
                 .description(r.getDescription())
                 .thumbnailUrl(r.getThumbnailUrl())
@@ -233,9 +286,10 @@ public class RecipeService {
                 .saveCount(r.getSaveCount())
                 .avgRating(r.getAvgRating())
                 .ratingCount(r.getRatingCount())
-                .tags(r.getTags())
+                .tags(r.getTags() == null ? List.of() :
+                        r.getTags().stream().map(tagService::toDto).collect(Collectors.toList()))
                 .season(r.getSeason())
-                .isPublic(r.getIsPublic())
+                .visibility(r.getVisibility())
                 .forkedFromId(r.getForkedFrom() != null ? r.getForkedFrom().getId() : null)
                 .createdAt(r.getCreatedAt())
                 .updatedAt(r.getUpdatedAt())
@@ -243,19 +297,17 @@ public class RecipeService {
     }
 
     private RecipeDtos.RecipeDetail toDetail(Recipe r) {
-        List<RecipeDtos.IngredientResponse> ingredients = r.getIngredients() == null ?
-            Collections.emptyList() :
-            r.getIngredients().stream().map(i -> RecipeDtos.IngredientResponse.builder()
-                .id(i.getId()).name(i.getName()).amount(i.getAmount())
-                .unit(i.getUnit()).note(i.getNote()).orderIndex(i.getOrderIndex())
-                .isOptional(i.getIsOptional()).build()).collect(Collectors.toList());
+        List<RecipeDtos.RecipeIngredientResponse> ingredients =
+                r.getRecipeIngredients() == null ? Collections.emptyList() :
+                r.getRecipeIngredients().stream().map(this::toIngredientResponse).collect(Collectors.toList());
 
-        List<RecipeDtos.StepResponse> steps = r.getSteps() == null ?
-            Collections.emptyList() :
-            r.getSteps().stream().map(s -> RecipeDtos.StepResponse.builder()
-                .id(s.getId()).stepNumber(s.getStepNumber()).title(s.getTitle())
-                .description(s.getDescription()).imageUrl(s.getImageUrl())
-                .timerSeconds(s.getTimerSeconds()).build()).collect(Collectors.toList());
+        List<RecipeDtos.StepResponse> steps =
+                r.getSteps() == null ? Collections.emptyList() :
+                r.getSteps().stream().map(s -> RecipeDtos.StepResponse.builder()
+                        .id(s.getId()).stepNumber(s.getStepNumber()).title(s.getTitle())
+                        .description(s.getDescription()).imageUrl(s.getImageUrl())
+                        .videoUrl(s.getVideoUrl()).mediaUrls(s.getMediaUrls())
+                        .timer(s.getTimer()).build()).collect(Collectors.toList());
 
         RecipeDtos.RecipeSummary summary = toSummary(r);
         return RecipeDtos.RecipeDetail.builder()
@@ -265,12 +317,33 @@ public class RecipeService {
                 .prepTimeMinutes(summary.getPrepTimeMinutes()).cookTimeMinutes(summary.getCookTimeMinutes())
                 .servings(summary.getServings()).caloriesPerServing(summary.getCaloriesPerServing())
                 .proteinG(summary.getProteinG()).carbsG(summary.getCarbsG()).fatG(summary.getFatG())
+                .fiberG(r.getFiberG()).sugarG(r.getSugarG())
+                .sodiumMg(r.getSodiumMg()).cholesterolMg(r.getCholesterolMg())
+                .videoUrl(r.getVideoUrl()).mediaUrls(r.getMediaUrls())
                 .forkCount(summary.getForkCount()).saveCount(summary.getSaveCount())
                 .avgRating(summary.getAvgRating()).ratingCount(summary.getRatingCount())
-                .tags(summary.getTags()).season(summary.getSeason()).isPublic(summary.getIsPublic())
+                .tags(summary.getTags()).season(summary.getSeason()).visibility(summary.getVisibility())
                 .forkedFromId(summary.getForkedFromId()).createdAt(summary.getCreatedAt())
                 .updatedAt(summary.getUpdatedAt())
                 .ingredients(ingredients).steps(steps)
+                .build();
+    }
+
+    private RecipeDtos.RecipeIngredientResponse toIngredientResponse(RecipeIngredient ri) {
+        Ingredient master = ri.getIngredient();
+        return RecipeDtos.RecipeIngredientResponse.builder()
+                .id(ri.getId())
+                .ingredientId(master != null ? master.getId() : null)
+                .name(ri.getDisplayName())
+                .imageUrl(master != null ? master.getImageUrl() : null)
+                .amount(ri.getAmount())
+                .unit(ri.getUnit())
+                .note(ri.getNote())
+                .orderIndex(ri.getOrderIndex())
+                .isOptional(ri.getIsOptional())
+                .tags(master != null && master.getTags() != null ?
+                        master.getTags().stream().map(tagService::toDto).collect(Collectors.toList()) :
+                        List.of())
                 .build();
     }
 
@@ -279,5 +352,69 @@ public class RecipeService {
                 .content(page.getContent()).page(page.getNumber()).size(page.getSize())
                 .totalElements(page.getTotalElements()).totalPages(page.getTotalPages())
                 .last(page.isLast()).build();
+    }
+
+    @Transactional
+    public RecipeDtos.RecipeSummary update(UUID recipeId, UUID userId, RecipeDtos.CreateRecipeRequest req) {
+        Recipe recipe = recipeRepo.findById(recipeId)
+                .orElseThrow(() -> new RuntimeException("Recipe not found"));
+        if (!recipe.getAuthor().getId().equals(userId))
+            throw new RuntimeException("Not authorized");
+
+        recipe.setTitle(req.getTitle());
+        recipe.setDescription(req.getDescription());
+        if (req.getThumbnailUrl() != null) recipe.setThumbnailUrl(req.getThumbnailUrl());
+        if (req.getVideoUrl() != null) recipe.setVideoUrl(req.getVideoUrl());
+        if (req.getMediaUrls() != null) recipe.setMediaUrls(req.getMediaUrls());
+        if (req.getCountryCode() != null) recipe.setCountryCode(req.getCountryCode());
+        if (req.getPrepTimeMinutes() != null) recipe.setPrepTimeMinutes(req.getPrepTimeMinutes());
+        if (req.getCookTimeMinutes() != null) recipe.setCookTimeMinutes(req.getCookTimeMinutes());
+        if (req.getServings() != null) recipe.setServings(req.getServings());
+        if (req.getDifficulty() != null) recipe.setDifficulty(req.getDifficulty());
+        if (req.getVisibility() != null) recipe.setVisibility(req.getVisibility());
+        if (req.getSeason() != null) recipe.setSeason(req.getSeason());
+        recipe.setCaloriesPerServing(req.getCaloriesPerServing());
+        recipe.setProteinG(req.getProteinG());
+        recipe.setCarbsG(req.getCarbsG());
+        recipe.setFatG(req.getFatG());
+        recipe.setFiberG(req.getFiberG());
+        recipe.setSugarG(req.getSugarG());
+        recipe.setSodiumMg(req.getSodiumMg());
+        recipe.setCholesterolMg(req.getCholesterolMg());
+
+        // Tags
+        if (req.getTagIds() != null) {
+            List<Tag> tags = tagRepo.findAllById(req.getTagIds());
+            recipe.setTags(tags);
+        }
+
+        // Ingredients — xóa cũ, tạo mới
+        if (req.getIngredients() != null) {
+            recipe.getRecipeIngredients().clear();
+            List<RecipeIngredient> recipeIngredients = IntStream
+                    .range(0, req.getIngredients().size())
+                    .mapToObj(i -> buildRecipeIngredient(recipe, req.getIngredients().get(i), i,
+                            recipe.getAuthor()))
+                    .collect(Collectors.toList());
+            recipe.getRecipeIngredients().addAll(recipeIngredients);
+        }
+
+        // Steps — xóa cũ, tạo mới
+        if (req.getSteps() != null) {
+            recipe.getSteps().clear();
+            List<Step> steps = req.getSteps().stream().map(s -> Step.builder()
+                    .recipe(recipe)
+                    .stepNumber(s.getStepNumber())
+                    .title(s.getTitle())
+                    .description(s.getDescription())
+                    .timer(s.getTimer())
+                    .imageUrl(s.getImageUrl())
+                    .videoUrl(s.getVideoUrl())
+                    .mediaUrls(s.getMediaUrls() != null ? s.getMediaUrls() : new String[0])
+                    .build()).collect(Collectors.toList());
+            recipe.getSteps().addAll(steps);
+        }
+
+        return toSummary(recipeRepo.save(recipe));
     }
 }

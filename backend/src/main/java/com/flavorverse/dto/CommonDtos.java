@@ -5,7 +5,9 @@ import java.util.List;
 
 public class CommonDtos {
 
-    @Data @Builder public static class PageResponse<T> {
+    @Data
+    @Builder
+    public static class PageResponse<T> {
         private List<T> content;
         private int page;
         private int size;
@@ -14,7 +16,9 @@ public class CommonDtos {
         private boolean last;
     }
 
-    @Data @Builder public static class ApiResponse<T> {
+    @Data
+    @Builder
+    public static class ApiResponse<T> {
         private boolean success;
         private String message;
         private T data;

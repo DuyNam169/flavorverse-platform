@@ -5,10 +5,9 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "users")
@@ -28,10 +27,10 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true, nullable = false, length = 50)
     private String username;
 
-    @Column(name = "display_name")
+    @Column(name = "display_name", length = 100)
     private String displayName;
 
     @Column(name = "avatar_url")
@@ -52,15 +51,19 @@ public class User {
     @Builder.Default
     private Integer calorieGoal = 2000;
 
-    @Column(columnDefinition = "text[]")
-    @JdbcTypeCode(SqlTypes.ARRAY)
-    private String[] allergies;
-
-    @Column(name = "diet_type")
+    @Column(name = "diet_type", length = 50)
     @Builder.Default
     private String dietType = "normal";
+
+    @Column(name = "password_hash")
+    private String passwordHash;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    // Allergies được load qua UserAllergyRepository khi cần (tránh eager load nặng)
 }

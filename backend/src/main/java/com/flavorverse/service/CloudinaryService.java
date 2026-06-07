@@ -42,4 +42,13 @@ public class CloudinaryService {
             log.error("Failed to delete cloudinary image: {}", publicId, e);
         }
     }
+
+    public String uploadVideo(MultipartFile file, String folder) throws IOException {
+        Map result = cloudinary.uploader().upload(file.getBytes(),
+            ObjectUtils.asMap(
+                "folder", "flavorverse/" + folder,
+                "resource_type", "video",
+                "transformation", "q_auto"));
+        return (String) result.get("secure_url");
+    }
 }

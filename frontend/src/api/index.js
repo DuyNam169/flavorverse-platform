@@ -55,4 +55,28 @@ export const userApi = {
   getFeed: () => api.get('/users/me/feed'),
 }
 
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config
+    if (error.response?.status === 403 && !original._retry) {
+      original._retry = true
+      try {
+        const refreshToken = localStorage.getItem('refresh_token')
+        const res = await axios.post('/api/auth/refresh', { refreshToken })
+        const newToken = res.data.data.accessToken
+        localStorage.setItem('jwt_token', newToken)
+        original.headers.Authorization = `Bearer ${newToken}`
+        return api(original)
+      } catch {
+        // Refresh thất bại → logout
+        localStorage.removeItem('jwt_token')
+        localStorage.removeItem('refresh_token')
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default api

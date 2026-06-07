@@ -99,7 +99,7 @@ export default function MealPlanner() {
                       <div key={dayIdx} className={`rounded-xl border border-gray-100 bg-gradient-to-b ${color} min-h-[80px] p-1.5 relative group`}>
                         {recipe ? (
                           <div className="h-full">
-                            <Link to={`/recipe/${recipe.id}`}>
+                            <Link to={`/recipe/${String(recipe.id).trim()}`}>
                               <img src={recipe.thumbnail_url} alt={recipe.title} className="w-full h-10 object-cover rounded-lg mb-1" />
                               <p className="text-xs font-semibold leading-tight line-clamp-2 hover:text-primary">{recipe.title}</p>
                               <p className="text-xs text-gray-400">{recipe.calories_per_serving} kcal</p>

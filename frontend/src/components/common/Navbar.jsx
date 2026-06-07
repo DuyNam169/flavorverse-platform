@@ -69,7 +69,7 @@ export default function Navbar() {
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full" />
           </button>
           <Link to={`/profile/${user?.id}`} className="ml-1">
-            <Avatar src={user?.avatar_url} name={user?.display_name} size="sm" />
+            <Avatar src={user?.avatarUrl} name={user?.displayName} size="sm" />
           </Link>
         </div>
       </nav>
